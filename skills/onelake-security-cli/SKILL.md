@@ -7,15 +7,15 @@ description: >
   row-level or column-level security via CLI, (3) audit or inspect existing data access roles, (4) generate
   reusable shell scripts for security provisioning, (5) troubleshoot access issues (user sees all/no data,
   RLS/CLS errors), (6) manage DefaultReader role or virtual memberships programmatically. Triggers: "onelake
-  security", "data access role", "create security role", "RLS on lakehouse", "CLS columns", "list roles",
+  security", "data access role", "create role", "RLS on lakehouse", "CLS columns", "list roles",
   "delete role", "who has access", "restrict table access", "hide PII columns", "DefaultReader", "manage
   lakehouse security from CLI", "security role script".
-license: MIT
 ---
 
 > **CRITICAL NOTES**
 > 1. To find the workspace details (including its ID) from workspace name: list all workspaces and, then, use JMESPath filtering
 > 2. To find the item details (including its ID) from workspace ID, item type, and item name: list all items of that type in that workspace and, then, use JMESPath filtering
+> 3. To create or update a single role: ALWAYS use POST upsert. NEVER use PUT.
 
 # OneLake Security — CLI Skill
 
@@ -49,8 +49,6 @@ These rules are non-negotiable. Violating them causes data loss or errors.
 **5. Always `--resource "https://api.fabric.microsoft.com"` on `az rest`.**
 - Without it, `az rest` does not inject the correct Fabric token → 401 Unauthorized.
 
-**6. Role changes take ~5 minutes to propagate. Group membership changes take ~1 hour.**
-
 ---
 
 ## Prerequisite Knowledge
@@ -68,7 +66,12 @@ Read these companion documents — they contain foundational context:
 | Task | Reference | Notes |
 |---|---|---|
 | Finding workspaces and items | [COMMON-CLI.md § Finding Workspaces and Items](../../common/COMMON-CLI.md#finding-workspaces-and-items-in-fabric) | Get workspace ID and item ID first |
-| Fabric topology, workspaces, items, OneLake | [COMMON-CORE.md § Fabric Topology](../../common/COMMON-CORE.md#fabric-topology-key-concepts) | Workspace → item → folder hierarchy |
+| **⭐ Create or update a single role (POST upsert)** | [ONELAKE-SECURITY-CORE.md § 2.3 POST Upsert ⭐](../../common/ONELAKE-SECURITY-CORE.md#23-create-or-update-single-role-post--upsert--recommended-default) | **⭐ ALWAYS USE THIS for create/update.** `POST ...?| Fabric topology, workspaces, items, OneLake | [COMMON-CORE.md § Fabric Topology](../../common/COMMON-CORE.md#fabric-topology-key-concepts) | Workspace → item → folder hierarchy |
+| List all data access roles | [ONELAKE-SECURITY-CORE.md § 2.1 List Data Access Roles](../../common/ONELAKE-SECURITY-CORE.md#21-list-data-access-roles) | GET. Paginated via `continuationToken`. Role `id` field is internal — ignore it |
+| Get a single role by name | [ONELAKE-SECURITY-CORE.md § 2.2 Get Single Data Access Role](../../common/ONELAKE-SECURITY-CORE.md#22-get-single-data-access-role) | GET by **role name** (string), never by UUID |
+dataAccessRoleConflictPolicy=Overwrite`. Safe — only affects named role, never deletes others |
+| Delete a single role | [ONELAKE-SECURITY-CORE.md § 2.4 Delete Single Role](../../common/ONELAKE-SECURITY-CORE.md#24-delete-single-role) | DELETE by **role name** (string), never by UUID |
+| **⚠️ Bulk replace ALL roles (PUT) — DANGEROUS** | [ONELAKE-SECURITY-CORE.md § 2.5 Bulk Replace ⚠️](../../common/ONELAKE-SECURITY-CORE.md#25-bulk-replace-all-roles-put--dangerous--use-only-when-intended) | **⚠️ NEVER use this to create/update a single role. Replaces ALL roles. Omitted roles are DELETED.** CI/CD only |
 | API endpoints and environment URLs | [COMMON-CORE.md § Environment URLs](../../common/COMMON-CORE.md#environment-urls) | Base: `https://api.fabric.microsoft.com/v1` |
 | Authentication and token acquisition | [COMMON-CORE.md § Authentication](../../common/COMMON-CORE.md#authentication-token-acquisition) | Scope: `https://api.fabric.microsoft.com/.default` |
 | Control-plane REST APIs (item discovery) | [COMMON-CORE.md § Core Control-Plane REST APIs](../../common/COMMON-CORE.md#core-control-plane-rest-apis) | List workspaces, list items to get IDs |
@@ -81,11 +84,6 @@ Read these companion documents — they contain foundational context:
 | OneLake shortcuts | [COMMON-CLI.md § OneLake Shortcuts](../../common/COMMON-CLI.md#onelake-shortcuts) | Security flows through to shortcut target |
 | CLI gotchas | [COMMON-CLI.md § Gotchas](../../common/COMMON-CLI.md#gotchas-troubleshooting-cli-specific) | `--resource` required for token injection |
 | Access control model (deny-by-default, roles, inheritance, ReadWrite, shortcuts) | [ONELAKE-SECURITY-CORE.md § 1. Access Control Model](../../common/ONELAKE-SECURITY-CORE.md#1-access-control-model) | **Read first** — workspace Admin/Member/Contributor bypass all roles |
-| List all data access roles | [ONELAKE-SECURITY-CORE.md § 2.1 List Data Access Roles](../../common/ONELAKE-SECURITY-CORE.md#21-list-data-access-roles) | GET. Paginated via `continuationToken`. Role `id` field is internal — ignore it |
-| Get a single role by name | [ONELAKE-SECURITY-CORE.md § 2.2 Get Single Data Access Role](../../common/ONELAKE-SECURITY-CORE.md#22-get-single-data-access-role) | GET by **role name** (string), never by UUID |
-| **⭐ Create or update a single role (POST upsert)** | [ONELAKE-SECURITY-CORE.md § 2.3 POST Upsert ⭐](../../common/ONELAKE-SECURITY-CORE.md#23-create-or-update-single-role-post--upsert--recommended-default) | **⭐ ALWAYS USE THIS for create/update.** `POST ...?dataAccessRoleConflictPolicy=Overwrite`. Safe — only affects named role, never deletes others |
-| Delete a single role | [ONELAKE-SECURITY-CORE.md § 2.4 Delete Single Role](../../common/ONELAKE-SECURITY-CORE.md#24-delete-single-role) | DELETE by **role name** (string), never by UUID |
-| **⚠️ Bulk replace ALL roles (PUT) — DANGEROUS** | [ONELAKE-SECURITY-CORE.md § 2.5 Bulk Replace ⚠️](../../common/ONELAKE-SECURITY-CORE.md#25-bulk-replace-all-roles-put--dangerous--use-only-when-intended) | **⚠️ NEVER use this to create/update a single role. Replaces ALL roles. Omitted roles are DELETED.** CI/CD only |
 | API error codes | [ONELAKE-SECURITY-CORE.md § 2.6 Common Error Responses](../../common/ONELAKE-SECURITY-CORE.md#26-common-error-responses) | 404 ItemNotFound, 404 RoleNotFound, 412 PreconditionFailed, 409 Conflict, 429 Rate Limit |
 | DecisionRule structure | [ONELAKE-SECURITY-CORE.md § 3.1 DecisionRule](../../common/ONELAKE-SECURITY-CORE.md#31-decisionrule) | Each rule needs exactly two PermissionScope objects: Path + Action |
 | Path values (table/folder scoping) | [ONELAKE-SECURITY-CORE.md § 3.2 Path Values](../../common/ONELAKE-SECURITY-CORE.md#32-path-values) | Case-sensitive. `"*"` = all, `"/Tables/Name"` = specific table |
