@@ -1,0 +1,29 @@
+{
+  "name": "onelake-collection",
+  "metadata": {
+    "description": "Skills for Microsoft Fabric OneLake collection for GitHub Copilot CLI",
+    "version": "1.0.0"
+  },
+  "owner": {
+    "name": "petcu40",
+    "email": "cristp@microsoft.com"
+  },
+  "plugins": [
+    {
+      "name": "onelake-skills",
+      "source": "./",
+      "description": "Complete bundle: all Microsoft Fabric OneLake Skills for developers",
+      "version": "1.0.0",
+      "skills": [
+        "./skills/onelake-security-cli"
+      ],
+      "keywords": [
+        "fabric",
+        "microsoft-fabric",
+        "onelake",
+        "onelake-security",
+        "security"
+      ]
+    }
+  ]
+}
