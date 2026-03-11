@@ -13,6 +13,10 @@ description: >
 license: MIT
 ---
 
+> **CRITICAL NOTES**
+> 1. To find the workspace details (including its ID) from workspace name: list all workspaces and, then, use JMESPath filtering
+> 2. To find the item details (including its ID) from workspace ID, item type, and item name: list all items of that type in that workspace and, then, use JMESPath filtering
+
 # OneLake Security — CLI Skill
 
 ## Critical Rules — Read Before Every Operation
@@ -40,7 +44,7 @@ These rules are non-negotiable. Violating them causes data loss or errors.
 - ❌ Table name case mismatch between Delta log and SQL statement.
 - See [ONELAKE-SECURITY-CORE.md](../../common/ONELAKE-SECURITY-CORE.md) §3.4 for full RLS syntax rules and examples, §6.7 for a complete worked example.
 
-**5. Always `--resource "https://api.fabric.microsoft.com/v1"` on `az rest`.**
+**5. Always `--resource "https://api.fabric.microsoft.com"` on `az rest`.**
 - Without it, `az rest` does not inject the correct Fabric token → 401 Unauthorized.
 
 **6. Role changes take ~5 minutes to propagate. Group membership changes take ~1 hour.**
@@ -57,46 +61,29 @@ Read these companion documents — they contain foundational context:
 
 ---
 
-## Knowledge Map
-
-### Fabric Platform Fundamentals
+## Table of Contents
 
 | Task | Reference | Notes |
 |---|---|---|
+| Finding workspaces and items | [COMMON-CLI.md](../../common/COMMON-CLI.md) § Finding Workspaces and Items in Fabric | Get workspace ID and item ID first |
 | Fabric topology, workspaces, items, OneLake | [COMMON-CORE.md](../../common/COMMON-CORE.md) § Fabric Topology & Key Concepts | Workspace → item → folder hierarchy |
 | API endpoints and environment URLs | [COMMON-CORE.md](../../common/COMMON-CORE.md) § Environment URLs | Base: `https://api.fabric.microsoft.com/v1` |
 | Authentication and token acquisition | [COMMON-CORE.md](../../common/COMMON-CORE.md) § Authentication & Token Acquisition | Scope: `https://api.fabric.microsoft.com/.default` |
 | Control-plane REST APIs (item discovery) | [COMMON-CORE.md](../../common/COMMON-CORE.md) § Core Control-Plane REST APIs | List workspaces, list items to get IDs |
 | OneLake data access (storage layer) | [COMMON-CORE.md](../../common/COMMON-CORE.md) § OneLake Data Access | DFS endpoint — separate from security API |
 | Platform gotchas | [COMMON-CORE.md](../../common/COMMON-CORE.md) § Gotchas, Best Practices & Troubleshooting | Token expiry, 429 handling, pagination |
-
-### CLI Tool Patterns
-
-| Task | Reference | Notes |
-|---|---|---|
 | Tool selection (az, curl, jq) | [COMMON-CLI.md](../../common/COMMON-CLI.md) § Tool Selection Rationale | `az rest` is primary — zero extra install |
-| Finding workspaces and items | [COMMON-CLI.md](../../common/COMMON-CLI.md) § Finding Workspaces and Items in Fabric | Get workspace ID and item ID first |
 | Authentication recipes | [COMMON-CLI.md](../../common/COMMON-CLI.md) § Authentication Recipes | `az login`, service principal, managed identity |
 | `az rest` patterns for Fabric APIs | [COMMON-CLI.md](../../common/COMMON-CLI.md) § Fabric Control-Plane API via `az rest` | `az rest --method GET --resource <audience> --url <url>` |
 | SQL / TDS data-plane access | [COMMON-CLI.md](../../common/COMMON-CLI.md) § SQL / TDS Data-Plane Access | SQL Endpoint must be in User's Identity mode |
 | OneLake shortcuts | [COMMON-CLI.md](../../common/COMMON-CLI.md) § OneLake Shortcuts | Security flows through to shortcut target |
 | CLI gotchas | [COMMON-CLI.md](../../common/COMMON-CLI.md) § Gotchas & Troubleshooting (CLI-Specific) | `--resource` required for token injection |
-
-### OneLake Security Model
-
-| Task | Reference | Notes |
-|---|---|---|
 | Access control model (deny-by-default, roles, inheritance, ReadWrite, shortcuts) | [ONELAKE-SECURITY-CORE.md](../../common/ONELAKE-SECURITY-CORE.md) § 1. Access Control Model | **Read first** — workspace Admin/Member/Contributor bypass all roles |
 | REST API reference — POST upsert (recommended), GET, DELETE, bulk PUT | [ONELAKE-SECURITY-CORE.md](../../common/ONELAKE-SECURITY-CORE.md) § 2. REST API Reference | POST upsert = safe default. Bulk PUT = dangerous, replaces all |
 | Role payload structure (DecisionRule, Path, Members, RLS, CLS) | [ONELAKE-SECURITY-CORE.md](../../common/ONELAKE-SECURITY-CORE.md) § 3. Role Payload Anatomy | §3.4 has RLS anatomy showing how Path/tablePath/value connect, examples table, common mistakes |
 | Engine enforcement and SQL endpoint modes | [ONELAKE-SECURITY-CORE.md](../../common/ONELAKE-SECURITY-CORE.md) § 4. Engine Enforcement and SQL Endpoint | Switch SQL Endpoint to User's Identity mode |
 | Best practices, gotchas, troubleshooting, latency, limits | [ONELAKE-SECURITY-CORE.md](../../common/ONELAKE-SECURITY-CORE.md) § 5. Best Practices, Gotchas, and Monitoring | POST over PUT, roleName not roleId, @file.json for payloads |
 | Common patterns (table, RLS, CLS, ReadWrite, end-to-end worked example) | [ONELAKE-SECURITY-CORE.md](../../common/ONELAKE-SECURITY-CORE.md) § 6. Common Patterns and Decision Guide | §6.7 has full worked example: user request → resolve identity → JSON → POST → verify |
-
-### CLI Invocation Recipes
-
-| Task | Reference | Notes |
-|---|---|---|
 | All `az rest` recipes (list, get, upsert, delete, RLS, CLS, audit) + end-to-end worked example | [cli-invocation-patterns.md](references/cli-invocation-patterns.md) | Starts with full worked example; POST upsert is the default; all payloads use @file.json |
 | Bash/PowerShell script templates | [cli-invocation-patterns.md](references/cli-invocation-patterns.md) § Script Templates | Parameterized, with dry-run validation |
 | Tool stack and connection setup | [§ Tool Stack and Connection](#tool-stack-and-connection) (below) | `az` CLI only — zero extra install |
@@ -123,8 +110,8 @@ Read these companion documents — they contain foundational context:
 ```bash
 WS_ID="<workspaceId>"
 ITEM_ID="<lakehouseId>"
-API="https://api.fabric.microsoft.com/v1"
-BASE="$API/workspaces/$WS_ID/items/$ITEM_ID/dataAccessRoles"
+API="https://api.fabric.microsoft.com"
+BASE="$API/v1/workspaces/$WS_ID/items/$ITEM_ID/dataAccessRoles"
 ```
 
 ### Quick Operations (safe one-liners)
@@ -171,7 +158,7 @@ For full recipes (RLS, CLS, audit, scripts): see [references/cli-invocation-patt
 
 ### Exploration (Inspect Current Security)
 
-1. **Discover item** → `az rest --method get --resource "$API" --url "$API/workspaces/$WS_ID/items" | jq '.value[] | select(.type=="Lakehouse") | {id, displayName}'`
+1. **Discover item** → `az rest --method get --resource "$API" --url "$API/v1/workspaces/$WS_ID/items" | jq '.value[] | select(.type=="Lakehouse") | {id, displayName}'`
 2. **List roles** → `az rest --method get --resource "$API" --url "$BASE" | jq '.value[] | {name, paths: .decisionRules[0].permission[0].attributeValueIncludedIn}'`
 3. **Inspect one role** → `az rest --method get --resource "$API" --url "$BASE/<roleName>" | jq .`
 4. **Summarize** → Present roles, paths, members, RLS/CLS to user.
@@ -235,7 +222,7 @@ Agent:
 
 ### MUST DO
 
-- **Always `--resource "https://api.fabric.microsoft.com/v1"`** on `az rest` — required for automatic token injection.
+- **Always `--resource "https://api.fabric.microsoft.com"`** on `az rest` — required for automatic token injection.
 - **Always POST upsert for single-role operations** — never bulk PUT unless deploying a complete role set.
 - **Always `--body @file.json`** — write JSON to temp file first. Inline JSON breaks in PowerShell and is fragile in bash.
 - **Use role `name` in API paths** — never the `id` UUID.
