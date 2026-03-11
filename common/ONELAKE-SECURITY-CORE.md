@@ -241,16 +241,6 @@ Supports `If-Match` / `If-None-Match` for optimistic concurrency.
 
 **Safe usage pattern**: If you must use bulk PUT, always (1) GET all roles first, (2) modify the array, (3) PUT the complete array back. See §6.6 for the full read-modify-write recipe.
 
-### 2.5 Delete Single Role
-
-```
-DELETE /workspaces/{workspaceId}/items/{itemId}/dataAccessRoles/{roleName}
-```
-
-**Response**: 200 OK (no body).
-
-Error codes: `ItemNotFound`, `RoleNotFound`.
-
 ### 2.6 Common Error Responses
 
 | Status | Error Code | Meaning |
