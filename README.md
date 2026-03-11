@@ -17,7 +17,7 @@ AI coding assistant skills for Microsoft Fabric OneLake developers. Optimized fo
 ```
 
 > [!IMPORTANT]
-> After installation **quit and restart** github copilot CLI.
+> After installation, **quit and restart** github copilot CLI.
 
 ## Skills Overview
 
