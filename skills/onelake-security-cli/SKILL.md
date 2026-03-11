@@ -2,7 +2,7 @@
 name: onelake-security-cli
 description: >
   Manage OneLake security data access roles (table/folder-level, RLS, CLS) on Microsoft Fabric Lakehouses,
-  Mirrored Databases, and Databricks Mirrored Catalogs from agentic CLI environments using az rest. Use when
+  Mirrored Databases, Fabric EventHouses, and Databricks Mirrored Catalogs from agentic CLI environments using az rest. Use when
   the user wants to: (1) create, list, update, or delete OneLake security roles via CLI, (2) configure
   row-level or column-level security via CLI, (3) audit or inspect existing data access roles, (4) generate
   reusable shell scripts for security provisioning, (5) troubleshoot access issues (user sees all/no data,
@@ -15,7 +15,9 @@ description: >
 > **CRITICAL NOTES**
 > 1. To find the workspace details (including its ID) from workspace name: list all workspaces and, then, use JMESPath filtering
 > 2. To find the item details (including its ID) from workspace ID, item type, and item name: list all items of that type in that workspace and, then, use JMESPath filtering
-> 3. To create or update a single role: ALWAYS use POST upsert. NEVER use PUT.
+> 3. To create or update a single role: ALWAYS use POST upsert. NEVER use PUT. `POST .../dataAccessRoles?dataAccessRoleConflictPolicy=Overwrite` — affects **only** the named role.
+> 4. Always write JSON payloads to a temp file and use `@file.json`
+> 5. Bulk replaces ALL roles (PUT) — DANGEROUS. NEVER use this to create/update a single role. Replaces ALL roles. Omitted roles are DELETED
 
 # OneLake Security — CLI Skill
 
