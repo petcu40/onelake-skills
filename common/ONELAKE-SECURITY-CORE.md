@@ -98,6 +98,10 @@ Multiple roles combine using **UNION** (least-restrictive) semantics:
 
 All APIs support **User**, **Service Principal**, and **Managed Identity** callers.
 
+> **CRITICAL — Default API Choice**: When creating or updating a single role, **always use the POST upsert API (§2.3)** — it is safe, incremental, and does not affect other roles. The bulk PUT API (§2.5) **replaces ALL roles on the item** and will **delete** any role not included in the payload. Only use bulk PUT when you intentionally want to replace the entire role set.
+
+> **CRITICAL — Role Name, Not Role ID**: All APIs that take a role identifier in the URL path use the role **name** (a string like `"DefaultReader"`), **never** the role **id** (a UUID). The `id` field returned in list responses is for internal tracking only and must not be used in API paths.
+
 ### 2.1 List Data Access Roles
 
 ```
@@ -112,7 +116,7 @@ Optional query parameter: `continuationToken` (for pagination).
   "value": [
     {
       "name": "RoleName",
-      "id": "uuid",
+      "id": "uuid-ignore-this-for-api-calls",
       "eTag": "string",
       "decisionRules": [ ... ],
       "members": { ... }
@@ -125,6 +129,8 @@ Optional query parameter: `continuationToken` (for pagination).
 
 Response header: `ETag` (for the collection).
 
+Note: The `id` field in each role is for internal use. When referencing a role in GET, DELETE, or other operations, always use the `name` field, not the `id`.
+
 Pagination: If `continuationToken` is present in the response, call again with `?continuationToken=<value>` until absent.
 
 ### 2.2 Get Single Data Access Role
@@ -132,6 +138,8 @@ Pagination: If `continuationToken` is present in the response, call again with `
 ```
 GET /workspaces/{workspaceId}/items/{itemId}/dataAccessRoles/{roleName}
 ```
+
+The `{roleName}` path parameter is the role's **name** string (e.g., `DefaultReader`), not a UUID.
 
 **Response** (200 OK): Returns the role object **directly** (not wrapped in `{ "value": [...] }`):
 ```json
@@ -148,7 +156,49 @@ Supports `If-Match` / `If-None-Match` request headers for conditional operations
 
 Error codes: `ItemNotFound`, `RoleNotFound`, `PreconditionFailed`.
 
-### 2.3 Create or Update All Roles (Bulk PUT)
+### 2.3 Create or Update Single Role (POST — Upsert) ⭐ RECOMMENDED DEFAULT
+
+This is the **recommended API for creating or updating a single role**. It only affects the named role and leaves all other roles untouched.
+
+```
+POST /workspaces/{workspaceId}/items/{itemId}/dataAccessRoles
+    ?dataAccessRoleConflictPolicy={Overwrite|Abort}
+```
+
+**Request body**:
+```json
+{
+  "name": "AnalystReaders",
+  "decisionRules": [ ... ],
+  "members": { ... }
+}
+```
+
+> **Documentation Bug**: The official documentation shows the request body wrapped in `{ "value": [...] }` and the response wrapped similarly. In practice, the **request body is the role object directly** (no wrapper) and the **response is the role object directly** (no `value` array). See the correction notes in the prompt that generated this document.
+
+**Conflict policies**:
+- `Overwrite`: Creates the role or replaces an existing role with the same name. **This is the safe default for updates.**
+- `Abort`: Fails with `Conflict` (409) if a role with that name already exists.
+
+**Response**: 200 OK (updated) or 201 Created (new). Headers: `ETag`, `Location`.
+
+**Why this is the default**: Unlike the bulk PUT (§2.5), this operation is additive — it creates or updates exactly one role without affecting any other roles on the item. There is no risk of accidentally deleting existing roles.
+
+### 2.4 Delete Single Role
+
+```
+DELETE /workspaces/{workspaceId}/items/{itemId}/dataAccessRoles/{roleName}
+```
+
+The `{roleName}` path parameter is the role's **name** string, not a UUID.
+
+**Response**: 200 OK (no body).
+
+Error codes: `ItemNotFound`, `RoleNotFound`.
+
+### 2.5 Bulk Replace All Roles (PUT) ⚠️ DANGEROUS — Use Only When Intended
+
+> **⚠️ WARNING**: This operation **replaces the entire set of roles** on the item. Any role that exists on the item but is **not included** in the request payload will be **permanently deleted**. If you only need to create or update a single role, use the POST upsert API (§2.3) instead.
 
 ```
 PUT /workspaces/{workspaceId}/items/{itemId}/dataAccessRoles
@@ -156,7 +206,7 @@ PUT /workspaces/{workspaceId}/items/{itemId}/dataAccessRoles
 
 Optional query parameter: `dryRun=true` (validate without applying).
 
-**Request body**: Full set of roles. This is a **declarative/replace-all** operation — roles not in the payload are **deleted**.
+**Request body**: The **complete** set of roles. This is a **declarative/replace-all** operation.
 ```json
 {
   "value": [
@@ -189,31 +239,7 @@ Optional query parameter: `dryRun=true` (validate without applying).
 
 Supports `If-Match` / `If-None-Match` for optimistic concurrency.
 
-**Warning**: This operation is **full replacement**. Any existing roles not included in the payload are deleted. Always read-before-write if preserving existing roles.
-
-### 2.4 Create or Update Single Role (POST — Upsert)
-
-```
-POST /workspaces/{workspaceId}/items/{itemId}/dataAccessRoles
-    ?dataAccessRoleConflictPolicy={Overwrite|Abort}
-```
-
-**Request body**:
-```json
-{
-  "name": "AnalystReaders",
-  "decisionRules": [ ... ],
-  "members": { ... }
-}
-```
-
-> **Documentation Bug**: The official documentation shows the request body wrapped in `{ "value": [...] }` and the response wrapped similarly. In practice, the **request body is the role object directly** (no wrapper) and the **response is the role object directly** (no `value` array). See the correction notes in the prompt that generated this document.
-
-**Conflict policies**:
-- `Overwrite`: Creates the role or replaces an existing role with the same name.
-- `Abort`: Fails with `Conflict` (409) if a role with that name already exists.
-
-**Response**: 200 OK (updated) or 201 Created (new). Headers: `ETag`, `Location`.
+**Safe usage pattern**: If you must use bulk PUT, always (1) GET all roles first, (2) modify the array, (3) PUT the complete array back. See §6.6 for the full read-modify-write recipe.
 
 ### 2.5 Delete Single Role
 
@@ -286,22 +312,74 @@ Two member types can coexist in a single role:
 
 ### 3.4 RLS Constraints
 
+**How RLS fits in the role JSON** — three fields must be coordinated:
+
+```
+decisionRules[].permission[] → attributeName: "Path"  → "/Tables/MyTable"    ← grants access to the table
+decisionRules[].constraints.rows[].tablePath           → "/Tables/MyTable"    ← must match Path above
+decisionRules[].constraints.rows[].value               → "SELECT * FROM MyTable WHERE col>10"  ← filters rows
+```
+
+The `tablePath` in constraints **must reference a table that is included** in the role's `Path` permission scope. The table name in the `value` SQL must match the actual Delta log table name (case-sensitive).
+
+**Complete RLS constraint JSON** (showing where it sits inside a role):
+
 ```json
-"constraints": {
-  "rows": [
-    {
-      "tablePath": "/Tables/SalesData",
-      "value": "SELECT * FROM SalesData WHERE Region='EMEA'"
+{
+  "name": "demo",
+  "decisionRules": [{
+    "effect": "Permit",
+    "permission": [
+      {"attributeName": "Path", "attributeValueIncludedIn": ["/Tables/nyctlc"]},
+      {"attributeName": "Action", "attributeValueIncludedIn": ["Read"]}
+    ],
+    "constraints": {
+      "rows": [{
+        "tablePath": "/Tables/nyctlc",
+        "value": "SELECT * FROM nyctlc WHERE tripDistance>10"
+      }]
     }
-  ]
+  }],
+  "members": {
+    "microsoftEntraMembers": [
+      {"tenantId": "72f988bf-...", "objectId": "aabbccdd-...", "objectType": "User"}
+    ]
+  }
 }
 ```
 
+**RLS `value` syntax rules**:
+
 - `tablePath`: Must match a table in the role's `Path` scope. Format: `/Tables/{optionalSchema}/{tableName}`.
 - `value`: T-SQL SELECT with WHERE predicate. Max 1000 characters.
+- The `SELECT * FROM {tableName}` part is **required** — you cannot write just the WHERE clause.
+- The `{tableName}` in the SELECT must **exactly match** the table name (case-sensitive for the Delta log).
 - Supported operators: `=`, `<>`, `>`, `>=`, `<`, `<=`, `IN`, `NOT`, `AND`, `OR`, `TRUE`, `FALSE`, `IS NULL`, `IS BLANK`.
 - String comparison is **case-insensitive** using collation `Latin1_General_100_CI_AS_KS_WS_SC_UTF8`.
 - Only applies to Delta parquet tables. Non-Delta objects are **fully blocked** when RLS is defined.
+
+**RLS Examples** (complete `value` strings):
+
+| Scenario | RLS `value` |
+|---|---|
+| Filter by string equality | `"SELECT * FROM Sales WHERE Region='EMEA'"` |
+| Filter by numeric comparison | `"SELECT * FROM nyctlc WHERE tripDistance>10"` |
+| Filter by numeric range | `"SELECT * FROM Transactions WHERE Amount>50000"` |
+| Multiple conditions (AND) | `"SELECT * FROM Orders WHERE Region='US' AND Status='Active'"` |
+| Multiple conditions (OR) | `"SELECT * FROM Customers WHERE Country='DE' OR Country='FR'"` |
+| IN list | `"SELECT * FROM Products WHERE Category IN ('Electronics','Furniture')"` |
+| NOT equal | `"SELECT * FROM Employees WHERE Department<>'HR'"` |
+| NULL check | `"SELECT * FROM Leads WHERE AssignedTo IS NOT NULL"` |
+| Boolean TRUE | `"SELECT * FROM Features WHERE IsEnabled=TRUE"` |
+| Schema-qualified table | `"SELECT * FROM [gold].[FactSales] WHERE Year=2025"` |
+| Numeric less-than-or-equal | `"SELECT * FROM Shipments WHERE WeightKg<=100"` |
+
+**Common RLS mistakes**:
+- ❌ `"WHERE Region='EMEA'"` — missing the `SELECT * FROM TableName` prefix.
+- ❌ `"SELECT * FROM sales WHERE ..."` — table name case doesn't match Delta log (`Sales` vs `sales`).
+- ❌ `"SELECT * FROM dbo.Sales WHERE ..."` — use schema brackets: `[dbo].[Sales]`.
+- ❌ Using `LIKE`, `BETWEEN`, subqueries — not supported in RLS predicates.
+- ❌ `tablePath` pointing to a table not in the role's `Path` scope — RLS won't apply.
 
 ### 3.5 CLS Constraints
 
@@ -397,15 +475,20 @@ SQL Analytics Endpoint must be switched to **User's Identity** mode for OneLake 
 
 ### 5.5 MUST DO
 
+- **Use POST upsert (§2.3) as the default API for creating/updating roles** — it only touches the named role and never deletes other roles. Never use bulk PUT (§2.5) unless you intentionally want to replace ALL roles.
+- **Use the role `name` (string) in API paths, never the role `id` (UUID)** — GET, DELETE, and other single-role APIs take `{roleName}` in the URL, not `{roleId}`.
+- **Always write JSON payloads to a file and use `@file.json`** — inline JSON in shell commands is error-prone, especially in PowerShell. Write to a temp file, then pass `--body @file.json`.
 - **Enable OneLake security per item** — it is off by default. Once enabled, it cannot be disabled.
 - **Remove users from DefaultReader** if they are also in a custom role that restricts access — DefaultReader grants full access and overrides restrictions.
 - **Switch SQL Analytics Endpoint to User's Identity mode** for OneLake security to apply.
 - **Include Fabric `Read` permission** for each user in a OneLake security role when using SQL Analytics Endpoint.
 - **Use `dryRun=true`** before bulk PUT to validate role changes.
-- **Read before write** on the bulk PUT API — it replaces all roles. Omitting an existing role deletes it.
 
 ### 5.6 AVOID
 
+- **Bulk PUT (§2.5) for single-role changes** — it replaces ALL roles; any role not in the payload is permanently deleted. Use POST upsert (§2.3) instead.
+- **Using the `id` field (UUID) in API URL paths** — always use the role `name` (string). The `id` field in list responses is for internal use only.
+- **Inline JSON in `az rest --body '{...}'`** — especially in PowerShell, which mangles quotes and special characters. Always write JSON to a temp file and use `--body @file.json`.
 - **Distribution lists** in role membership — SQL Endpoint cannot resolve their members. Use Entra security groups instead.
 - **Cross-region shortcuts** with OneLake security — results in 404 errors. Keep data and shortcuts in the same region.
 - **Mixed-mode queries** — queries that access both OneLake-security-enabled and non-enabled items in a single query will fail.
@@ -417,20 +500,25 @@ SQL Analytics Endpoint must be switched to **User's Identity** mode for OneLake 
 
 ### 5.7 PREFER
 
+- **POST upsert (§2.3) with `dataAccessRoleConflictPolicy=Overwrite`** as the default write operation — safe, incremental, no risk of deleting other roles.
+- **`@file.json`** for all JSON payloads — write the role JSON to a temp file, pass to the API via file reference. This avoids shell escaping issues across bash, PowerShell, and cmd.
 - **Entra security groups** over individual user assignments for scalability.
-- **Single-role upsert (POST)** over bulk PUT for incremental changes — avoids accidentally deleting roles.
 - **OneLake security** over SQL-level GRANT/REVOKE for consistent cross-engine enforcement.
 - **Integer-based RLS predicates** over string comparisons for performance and reliability.
 - **User's Identity mode** for SQL Analytics Endpoint when OneLake security is enabled.
 - **DirectLake on OneLake mode** (not DirectLake on SQL) for Power BI to ensure user identity pass-through.
+- **Bulk PUT (§2.5) only** when you need to deploy a complete, known set of roles from scratch (e.g., CI/CD pipeline) — and even then, always `dryRun=true` first.
 
 ### 5.8 Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
+| **Bulk PUT deleted all my roles** | PUT replaces the entire role set; omitted roles are deleted | **Never use PUT for single-role changes.** Use POST upsert (§2.3) with `dataAccessRoleConflictPolicy=Overwrite` |
+| 404 when using role UUID in URL path | API expects role **name** (string), not role **id** (UUID) | Use `{roleName}` in the URL, e.g., `.../dataAccessRoles/DefaultReader` |
+| JSON parse error in PowerShell | PowerShell mangles inline JSON quotes in `--body '{...}'` | Write JSON to a temp file, use `--body @file.json` |
+| RLS returns no rows | Predicate missing `SELECT * FROM TableName` prefix, or table name case mismatch | RLS value must be `"SELECT * FROM ExactTableName WHERE ..."` — check Delta log for exact name |
 | User sees all data despite custom role | DefaultReader still active with `ReadAll` membership | Delete DefaultReader or remove `ReadAll` virtual members |
 | User sees no data | Not a member of any role (deny-by-default) | Add user to a role via API or portal |
-| RLS returns no rows | Predicate references non-existent column or table name mismatch | Verify column names match Delta log schema exactly |
 | CLS query error | RLS in one role + CLS in another role on same table | Combine RLS and CLS in a single role |
 | 404 on shortcut access | Cross-region shortcut | Keep source and target in same capacity region |
 | SQL Endpoint ignores OneLake roles | Endpoint in Delegated Identity mode | Switch to User's Identity mode |
@@ -438,7 +526,6 @@ SQL Analytics Endpoint must be switched to **User's Identity** mode for OneLake 
 | Role changes not applied | Role definition propagation latency | Wait ~5 minutes |
 | 412 PreconditionFailed | ETag mismatch on PUT | Re-read the current ETag and retry |
 | 429 Too Many Requests | Rate limit exceeded | Respect `Retry-After` header; add backoff |
-| Bulk PUT deleted a role | Role omitted from payload | Always read all roles first, modify, then PUT the full set |
 | External shortcut access denied | User lacks Fabric `Read` permission on item | Grant `Read` permission in addition to OneLake role |
 
 ### 5.9 Latency and Propagation
@@ -621,7 +708,81 @@ No RLS/CLS allowed on ReadWrite roles.
 
 This prevents accidental deletion and handles concurrent modifications.
 
-### 6.7 Decision Guide
+### 6.7 End-to-End Worked Example: User Request → Full API Call
+
+**User request**: "Create a new OneLake security role named `demo`, for Aaron Merrill, with access to just the table `nyctlc` with the constraint for the rows where `tripDistance` is bigger than 10."
+
+**Step 1 — Resolve the user's Entra ID**:
+```
+GET https://graph.microsoft.com/v1.0/users?$filter=displayName eq 'Aaron Merrill'&$select=id
+```
+Result: `objectId = "EAF3B3B8-524A-4EC6-A96F-3340748DF869"`, `tenantId = "72f988bf-86f1-41af-91ab-2d7cd011db47"`.
+
+**Step 2 — Build the role JSON**:
+
+The three fields that must be coordinated:
+- `permission[0]` Path → `/Tables/nyctlc` (grants access to the table)
+- `constraints.rows[0].tablePath` → `/Tables/nyctlc` (must match the Path above)
+- `constraints.rows[0].value` → `SELECT * FROM nyctlc WHERE tripDistance>10` (the table name in SQL must match the Delta log)
+
+```json
+{
+  "name": "demo",
+  "decisionRules": [
+    {
+      "effect": "Permit",
+      "permission": [
+        {
+          "attributeName": "Path",
+          "attributeValueIncludedIn": ["/Tables/nyctlc"]
+        },
+        {
+          "attributeName": "Action",
+          "attributeValueIncludedIn": ["Read"]
+        }
+      ],
+      "constraints": {
+        "rows": [
+          {
+            "tablePath": "/Tables/nyctlc",
+            "value": "SELECT * FROM nyctlc WHERE tripDistance>10"
+          }
+        ]
+      }
+    }
+  ],
+  "members": {
+    "microsoftEntraMembers": [
+      {
+        "tenantId": "72f988bf-86f1-41af-91ab-2d7cd011db47",
+        "objectId": "EAF3B3B8-524A-4EC6-A96F-3340748DF869",
+        "objectType": "User"
+      }
+    ]
+  }
+}
+```
+
+**Step 3 — Apply via POST upsert** (safe — only touches this role):
+
+```
+POST https://api.fabric.microsoft.com/v1/workspaces/{wsId}/items/{itemId}/dataAccessRoles?dataAccessRoleConflictPolicy=Overwrite
+Content-Type: application/json
+
+<the JSON above>
+```
+
+Response: `201 Created` (or `200 OK` if updating). ETag and Location headers returned.
+
+**Step 4 — Verify**:
+
+```
+GET https://api.fabric.microsoft.com/v1/workspaces/{wsId}/items/{itemId}/dataAccessRoles/demo
+```
+
+Confirm the response matches the intended role definition.
+
+### 6.8 Decision Guide
 
 | Scenario | Recommended Approach |
 |---|---|
