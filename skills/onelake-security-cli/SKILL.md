@@ -3,11 +3,11 @@ name: onelake-security-cli
 description: >
   Manage OneLake security data access roles (table/folder-level, RLS, CLS) on Microsoft Fabric Lakehouses,
   Mirrored Databases, and Databricks Mirrored Catalogs from agentic CLI environments using az rest. Use when
-  the user wants to: (1) list, create, update, or delete OneLake security roles from terminal, (2) configure
+  the user wants to: (1) create, list, update, or delete OneLake security roles via CLI, (2) configure
   row-level or column-level security via CLI, (3) audit or inspect existing data access roles, (4) generate
   reusable shell scripts for security provisioning, (5) troubleshoot access issues (user sees all/no data,
   RLS/CLS errors), (6) manage DefaultReader role or virtual memberships programmatically. Triggers: "onelake
-  security", "data access role", "create role", "RLS on lakehouse", "CLS columns", "list roles",
+  security", "data access role", "create role", "add role", "RLS on lakehouse", "CLS columns", "list roles",
   "delete role", "who has access", "restrict table access", "hide PII columns", "DefaultReader", "manage
   lakehouse security from CLI", "security role script".
 ---
@@ -66,7 +66,8 @@ Read these companion documents — they contain foundational context:
 | Task | Reference | Notes |
 |---|---|---|
 | Finding workspaces and items | [COMMON-CLI.md § Finding Workspaces and Items](../../common/COMMON-CLI.md#finding-workspaces-and-items-in-fabric) | Get workspace ID and item ID first |
-| **⭐ Create or update a single role (POST upsert)** | [ONELAKE-SECURITY-CORE.md § 2.3 POST Upsert ⭐](../../common/ONELAKE-SECURITY-CORE.md#23-create-or-update-single-role-post--upsert--recommended-default) | **⭐ ALWAYS USE THIS for create/update.** `POST ...?| Fabric topology, workspaces, items, OneLake | [COMMON-CORE.md § Fabric Topology](../../common/COMMON-CORE.md#fabric-topology-key-concepts) | Workspace → item → folder hierarchy |
+| **⭐ Create or update a single role (POST upsert)** | [ONELAKE-SECURITY-CORE.md § 2.3 POST Upsert ⭐](../../common/ONELAKE-SECURITY-CORE.md#23-create-or-update-single-role-post--upsert--recommended-default) | **⭐ ALWAYS USE THIS for create/update.** `POST ...`|
+| Fabric topology, workspaces, items, OneLake | [COMMON-CORE.md § Fabric Topology](../../common/COMMON-CORE.md#fabric-topology-key-concepts) | Workspace → item → folder hierarchy |
 | List all data access roles | [ONELAKE-SECURITY-CORE.md § 2.1 List Data Access Roles](../../common/ONELAKE-SECURITY-CORE.md#21-list-data-access-roles) | GET. Paginated via `continuationToken`. Role `id` field is internal — ignore it |
 | Get a single role by name | [ONELAKE-SECURITY-CORE.md § 2.2 Get Single Data Access Role](../../common/ONELAKE-SECURITY-CORE.md#22-get-single-data-access-role) | GET by **role name** (string), never by UUID |
 dataAccessRoleConflictPolicy=Overwrite`. Safe — only affects named role, never deletes others |
