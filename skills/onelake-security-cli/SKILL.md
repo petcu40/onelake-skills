@@ -22,46 +22,6 @@ description: >
 
 # OneLake Security — CLI Skill
 
-## Critical Rules — Read Before Every Operation
-
-These rules are non-negotiable. Violating them causes data loss or errors.
-
-**1. To create or update a single role: ALWAYS use POST upsert. NEVER use PUT.**
-- ✅ POST upsert: `POST .../dataAccessRoles?dataAccessRoleConflictPolicy=Overwrite` — affects **only** the named role, leaves all other roles untouched.
-- ❌ PUT: `PUT .../dataAccessRoles` — **replaces ALL roles on the item**. Any role not in the payload is **permanently deleted**.
-- The PUT API exists only for full role-set deployment (CI/CD). It must NEVER be used to create or update a single role.
-- See [§2.3 POST Upsert](../../common/ONELAKE-SECURITY-CORE.md#23-create-or-update-single-role-post--upsert--recommended-default) for the recommended API.
-
-**2. API paths use the role NAME (string), never the role ID (UUID).**
-- ✅ Correct: `.../dataAccessRoles/DefaultReader`
-- ❌ Wrong: `.../dataAccessRoles/22b64df5-5142-5fcc-55e4-d42a148795d9`
-- The `id` field in list responses is for internal tracking only. Ignore it.
-
-**3. Always write JSON payloads to a temp file and use `@file.json`.**
-- ❌ `az rest --body '{"name":"..."}'` — breaks in PowerShell, fragile in bash with quotes/escapes.
-- ✅ Write JSON to `/tmp/role.json`, then: `az rest --body @/tmp/role.json`
-
-**4. RLS predicates require the full SELECT statement, and three fields must be coordinated.**
-- The role's `permission[].Path` must include the table: `"/Tables/nyctlc"`
-- The `constraints.rows[].tablePath` must match: `"/Tables/nyctlc"`
-- The `constraints.rows[].value` must use the exact table name: `"SELECT * FROM nyctlc WHERE tripDistance>10"`
-- ❌ `"WHERE tripDistance>10"` — missing `SELECT * FROM TableName`.
-- ❌ Table name case mismatch between Delta log and SQL statement.
-- See [§3.4 RLS Constraints](../../common/ONELAKE-SECURITY-CORE.md#34-rls-constraints) for full syntax rules, examples table, and common mistakes.
-
-**5. Always `--resource "https://api.fabric.microsoft.com"` on `az rest`.**
-- Without it, `az rest` does not inject the correct Fabric token → 401 Unauthorized.
-
----
-
-## Prerequisite Knowledge
-
-Read these companion documents — they contain foundational context:
-
-- [COMMON-CORE.md](../../common/COMMON-CORE.md) — Fabric REST API patterns, authentication, token audiences, item discovery.
-- [COMMON-CLI.md](../../common/COMMON-CLI.md) — `az rest`, `az login`, token acquisition, Fabric REST via CLI.
-- [ONELAKE-SECURITY-CORE.md](../../common/ONELAKE-SECURITY-CORE.md) — Access control model, REST API reference, role payloads, RLS/CLS, engine enforcement, best practices, gotchas, common patterns.
-
 ---
 
 ## Table of Contents
@@ -102,6 +62,38 @@ Read these companion documents — they contain foundational context:
 | Tool stack and connection setup | [§ Tool Stack and Connection](#tool-stack-and-connection) (below) | `az` CLI only — zero extra install |
 | Agentic exploration/authoring workflow | [§ Agentic Workflows](#agentic-workflows) (below) | 5-step discover → inspect → build payload → POST upsert → verify |
 | Agent integration (Copilot CLI, Claude Code) | [§ Agent Integration](#agent-integration) (below) | Always write JSON to temp file; always POST, never PUT |
+
+---
+
+## Critical Rules — Read Before Every Operation
+
+These rules are non-negotiable. Violating them causes data loss or errors.
+
+**1. To create or update a single role: ALWAYS use POST upsert. NEVER use PUT.**
+- ✅ POST upsert: `POST .../dataAccessRoles?dataAccessRoleConflictPolicy=Overwrite` — affects **only** the named role, leaves all other roles untouched.
+- ❌ PUT: `PUT .../dataAccessRoles` — **replaces ALL roles on the item**. Any role not in the payload is **permanently deleted**.
+- The PUT API exists only for full role-set deployment (CI/CD). It must NEVER be used to create or update a single role.
+- See [§2.3 POST Upsert](../../common/ONELAKE-SECURITY-CORE.md#23-create-or-update-single-role-post--upsert--recommended-default) for the recommended API.
+
+**2. API paths use the role NAME (string), never the role ID (UUID).**
+- ✅ Correct: `.../dataAccessRoles/DefaultReader`
+- ❌ Wrong: `.../dataAccessRoles/22b64df5-5142-5fcc-55e4-d42a148795d9`
+- The `id` field in list responses is for internal tracking only. Ignore it.
+
+**3. Always write JSON payloads to a temp file and use `@file.json`.**
+- ❌ `az rest --body '{"name":"..."}'` — breaks in PowerShell, fragile in bash with quotes/escapes.
+- ✅ Write JSON to `/tmp/role.json`, then: `az rest --body @/tmp/role.json`
+
+**4. RLS predicates require the full SELECT statement, and three fields must be coordinated.**
+- The role's `permission[].Path` must include the table: `"/Tables/nyctlc"`
+- The `constraints.rows[].tablePath` must match: `"/Tables/nyctlc"`
+- The `constraints.rows[].value` must use the exact table name: `"SELECT * FROM nyctlc WHERE tripDistance>10"`
+- ❌ `"WHERE tripDistance>10"` — missing `SELECT * FROM TableName`.
+- ❌ Table name case mismatch between Delta log and SQL statement.
+- See [§3.4 RLS Constraints](../../common/ONELAKE-SECURITY-CORE.md#34-rls-constraints) for full syntax rules, examples table, and common mistakes.
+
+**5. Always `--resource "https://api.fabric.microsoft.com"` on `az rest`.**
+- Without it, `az rest` does not inject the correct Fabric token → 401 Unauthorized.
 
 ---
 
