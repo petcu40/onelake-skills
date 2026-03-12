@@ -68,11 +68,10 @@ Read these companion documents — they contain foundational context:
 | Task | Reference | Notes |
 |---|---|---|
 | Finding workspaces and items | [COMMON-CLI.md § Finding Workspaces and Items](../../common/COMMON-CLI.md#finding-workspaces-and-items-in-fabric) | Get workspace ID and item ID first |
-| **⭐ Create or update a single role (POST upsert)** | [ONELAKE-SECURITY-CORE.md § 2.3 POST Upsert ⭐](../../common/ONELAKE-SECURITY-CORE.md#23-create-or-update-single-role-post--upsert--recommended-default) | **⭐ ALWAYS USE THIS for create/update.** `POST ...`|
+| **⭐ Create or update a single role (POST upsert)** | [ONELAKE-SECURITY-CORE.md § 2.3 POST Upsert ⭐](../../common/ONELAKE-SECURITY-CORE.md#23-create-or-update-single-role-post--upsert--recommended-default) | **⭐ ALWAYS USE THIS for create/update.** `POST ...?dataAccessRoleConflictPolicy=Overwrite`. Safe — only affects named role, never deletes others |
 | Fabric topology, workspaces, items, OneLake | [COMMON-CORE.md § Fabric Topology](../../common/COMMON-CORE.md#fabric-topology-key-concepts) | Workspace → item → folder hierarchy |
 | List all data access roles | [ONELAKE-SECURITY-CORE.md § 2.1 List Data Access Roles](../../common/ONELAKE-SECURITY-CORE.md#21-list-data-access-roles) | GET. Paginated via `continuationToken`. Role `id` field is internal — ignore it |
 | Get a single role by name | [ONELAKE-SECURITY-CORE.md § 2.2 Get Single Data Access Role](../../common/ONELAKE-SECURITY-CORE.md#22-get-single-data-access-role) | GET by **role name** (string), never by UUID |
-dataAccessRoleConflictPolicy=Overwrite`. Safe — only affects named role, never deletes others |
 | Delete a single role | [ONELAKE-SECURITY-CORE.md § 2.4 Delete Single Role](../../common/ONELAKE-SECURITY-CORE.md#24-delete-single-role) | DELETE by **role name** (string), never by UUID |
 | **⚠️ Bulk replace ALL roles (PUT) — DANGEROUS** | [ONELAKE-SECURITY-CORE.md § 2.5 Bulk Replace ⚠️](../../common/ONELAKE-SECURITY-CORE.md#25-bulk-replace-all-roles-put--dangerous--use-only-when-intended) | **⚠️ NEVER use this to create/update a single role. Replaces ALL roles. Omitted roles are DELETED.** CI/CD only |
 | API endpoints and environment URLs | [COMMON-CORE.md § Environment URLs](../../common/COMMON-CORE.md#environment-urls) | Base: `https://api.fabric.microsoft.com/v1` |
