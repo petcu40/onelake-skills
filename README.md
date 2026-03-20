@@ -17,10 +17,8 @@ AI coding assistant skills for Microsoft Fabric OneLake developers. Optimized fo
 ```
 
 > [!IMPORTANT]
-> After installation, **quit and restart** github copilot CLI.
-
-> [!CRITICAL]
-> When working with GitHub Copilot CLI, there is a bug we're working on. Until the bug gets addressed, please use the following **workaround**:
+> 1. After installation, **quit and restart** github copilot CLI.
+> 2. When working with GitHub Copilot CLI, there is a bug we're working on. Until the bug gets addressed, please use the following **workaround**:
 > Place the file [workarounds/copilot-instructions.md](./workarounds/copilot-instructions.md) as your copilot-instructions.md file (or merge its content into your existing one - if you have one alreay). This is, typically, (on Windows) in the %USERPROFILE%\.copilot directory.
 
 ## Skills Overview
